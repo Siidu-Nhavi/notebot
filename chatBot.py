@@ -3,7 +3,8 @@ import time
 import streamlit as st
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_community.chains.combine_documents.stuff import StuffDocumentsChain
+from langchain.chains.llm import LLMChain
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
