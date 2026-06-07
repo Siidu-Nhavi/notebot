@@ -3,10 +3,9 @@ import time
 import streamlit as st
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
-from langchain_community.chains.combine_documents.stuff import StuffDocumentsChain
-from langchain.chains.llm import LLMChain
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -20,7 +19,6 @@ with st.sidebar:
     file = st.file_uploader("Upload notes PDF", type="pdf")
 
 if file is not None:
-    # Reset if new file uploaded
     if "last_file" not in st.session_state or st.session_state.last_file != file.name:
         st.session_state.pop("vector_store", None)
         st.session_state.last_file = file.name
@@ -48,28 +46,35 @@ if file is not None:
 
     if user_query and "vector_store" in st.session_state:
         with st.spinner("Thinking..."):
-            matching_chunks = st.session_state.vector_store.similarity_search(user_query, k=4)
-
-            llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash-lite",  # Free tier friendly
-                google_api_key=GOOGLE_API_KEY
-            )
-
-            prompt = ChatPromptTemplate.from_template("""
-            Answer the question based only on the context below.
-            If the answer isn't in the context, say "I couldn't find that in your notes."
-
-            Context: {context}
-            Question: {input}
-            """)
-
-            chain = create_stuff_documents_chain(llm, prompt)
             try:
-                response = chain.invoke({  #here invoke method handles the request i.e rate limit
+                matching_chunks = st.session_state.vector_store.similarity_search(user_query, k=4)
+
+                # Format docs as plain text
+                context = "\n\n".join(doc.page_content for doc in matching_chunks)
+
+                llm = ChatGoogleGenerativeAI(
+                    model="gemini-2.0-flash-lite",
+                    google_api_key=GOOGLE_API_KEY
+                )
+
+                prompt = ChatPromptTemplate.from_template("""
+                Answer the question based only on the context below.
+                If the answer isn't in the context, say "I couldn't find that in your notes."
+
+                Context: {context}
+                Question: {input}
+                """)
+
+                # Modern pipe syntax - no create_stuff_documents_chain needed
+                chain = prompt | llm | StrOutputParser()
+
+                response = chain.invoke({
                     "input": user_query,
-                    "context": matching_chunks
+                    "context": context
                 })
+
                 st.write(response)
+
             except Exception as e:
                 if "429" in str(e):
                     st.warning("⏳ Rate limit hit. Waiting 30 seconds and retrying...")
@@ -77,5 +82,3 @@ if file is not None:
                     st.rerun()
                 else:
                     st.error(f"Error: {str(e)}")
-
-        st.write(response)
